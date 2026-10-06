@@ -1,0 +1,192 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  PRODUCER
+}
+
+enum PredictionStatus {
+  PENDING
+  PROCESSING
+  DONE
+  ERROR
+}
+
+enum QualityCategory {
+  SPECIALTY
+  PREMIUM
+  COMMERCIAL
+  LOW_GRADE
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  role      Role     @default(PRODUCER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  producer Producer?
+
+  @@map("users")
+}
+
+model Producer {
+  id          Int      @id @default(autoincrement())
+  firstName   String
+  lastName    String
+  phone       String?
+  document    String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userId Int  @unique
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  farms Farm[]
+
+  @@map("producers")
+}
+
+model Farm {
+  id          Int      @id @default(autoincrement())
+  name        String
+  location    String
+  municipality String?
+  department  String?
+  hectares    Float?
+  altitude    Float?   // meters above sea level
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  producerId Int
+  producer   Producer @relation(fields: [producerId], references: [id], onDelete: Cascade)
+
+  batches Batch[]
+
+  @@map("farms")
+}
+
+model Batch {
+  id            Int      @id @default(autoincrement())
+  code          String   @unique
+  harvestDate   DateTime
+  processingMethod String? // washed, natural, honey, etc.
+  variety       String?  // caturra, castillo, geisha, etc.
+  weight        Float?   // kilograms
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  farmId Int
+  farm   Farm @relation(fields: [farmId], references: [id], onDelete: Cascade)
+
+  productionVariables ProductionVariables?
+  coffeeEvaluation    CoffeeEvaluation?
+  aiPrediction        AIPrediction?
+  recommendations     Recommendation[]
+
+  @@map("batches")
+}
+
+model ProductionVariables {
+  id                Int      @id @default(autoincrement())
+  // Climate variables
+  avgTemperature    Float?   // °C
+  avgRainfall       Float?   // mm
+  avgHumidity       Float?   // percentage
+
+  // Soil variables
+  soilPH            Float?
+  soilOrganicMatter Float?   // percentage
+  soilNitrogen      Float?
+
+  // Crop management
+  fertilizationFrequency String? // monthly, quarterly, etc.
+  pestControlType   String?  // organic, chemical, integrated
+  irrigationType    String?  // drip, sprinkler, rainfed
+
+  // Post-harvest
+  dryingMethod      String?  // sun, mechanical, raised bed
+  dryingDays        Int?
+  storageMoisture   Float?   // percentage
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  batchId Int   @unique
+  batch   Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@map("production_variables")
+}
+
+model CoffeeEvaluation {
+  id            Int      @id @default(autoincrement())
+  // SCA cupping scores (0-10 each)
+  fragranceScore  Float?
+  flavorScore     Float?
+  aftertasteScore Float?
+  acidityScore    Float?
+  bodyScore       Float?
+  balanceScore    Float?
+  uniformityScore Float?
+  cleanCupScore   Float?
+  sweetnessScore  Float?
+  overallScore    Float?
+  totalScore      Float?  // sum of all scores (max 100)
+
+  defects       Int?     // number of defects found
+  evaluatorName String?
+  evaluationDate DateTime?
+  notes         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  batchId Int   @unique
+  batch   Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@map("coffee_evaluations")
+}
+
+model AIPrediction {
+  id              Int              @id @default(autoincrement())
+  status          PredictionStatus @default(PENDING)
+  predictedScore  Float?           // estimated quality score
+  qualityCategory QualityCategory?
+  confidenceLevel Float?           // 0.0 to 1.0
+  modelVersion    String?
+  inputFeatures   Json?            // snapshot of variables used
+  rawOutput       Json?            // full model output
+  errorMessage    String?
+  requestedAt     DateTime         @default(now())
+  completedAt     DateTime?
+  updatedAt       DateTime         @updatedAt
+
+  batchId Int   @unique
+  batch   Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@map("ai_predictions")
+}
+
+model Recommendation {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String
+  category    String   // commercialization, processing, agronomic
+  priority    String   @default("medium") // low, medium, high
+  createdAt   DateTime @default(now())
+
+  batchId Int
+  batch   Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@map("recommendations")
+}
