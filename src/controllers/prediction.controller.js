@@ -216,6 +216,7 @@ const requestPrediction = async (req, res, next) => {
     // ─────────────────────────────────────────────────────────────────────────
 
     // Save prediction result
+    // inputFeatures stored as JSON string for SQLite compatibility
     const prediction = await prisma.aIPrediction.update({
       where: { batchId },
       data: {
@@ -224,7 +225,7 @@ const requestPrediction = async (req, res, next) => {
         qualityCategory: result.qualityCategory,
         confidenceLevel: result.confidenceLevel,
         modelVersion: 'stub-v1.0',
-        inputFeatures: batch.productionVariables ?? {},
+        inputFeatures: JSON.stringify(batch.productionVariables ?? {}),
         completedAt: new Date(),
       },
     });

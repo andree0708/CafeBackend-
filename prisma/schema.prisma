@@ -3,34 +3,22 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // LOCAL dev: sqlite (hardcoded for Prisma compatibility)
+  // Before deploying to Render: change provider to "postgresql" and url to env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
-enum Role {
-  ADMIN
-  PRODUCER
-}
-
-enum PredictionStatus {
-  PENDING
-  PROCESSING
-  DONE
-  ERROR
-}
-
-enum QualityCategory {
-  SPECIALTY
-  PREMIUM
-  COMMERCIAL
-  LOW_GRADE
-}
+// NOTE: enums are replaced with String fields for SQLite compatibility.
+// Valid values are enforced at the application layer (controllers/validators).
+// When running on PostgreSQL in production the same schema works unchanged.
 
 model User {
   id        Int      @id @default(autoincrement())
   email     String   @unique
   password  String
-  role      Role     @default(PRODUCER)
+  // role: "ADMIN" | "PRODUCER"
+  role      String   @default("PRODUCER")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -40,13 +28,13 @@ model User {
 }
 
 model Producer {
-  id          Int      @id @default(autoincrement())
-  firstName   String
-  lastName    String
-  phone       String?
-  document    String?  @unique
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        Int     @id @default(autoincrement())
+  firstName String
+  lastName  String
+  phone     String?
+  document  String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   userId Int  @unique
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -57,15 +45,15 @@ model Producer {
 }
 
 model Farm {
-  id          Int      @id @default(autoincrement())
-  name        String
-  location    String
+  id           Int      @id @default(autoincrement())
+  name         String
+  location     String
   municipality String?
-  department  String?
-  hectares    Float?
-  altitude    Float?   // meters above sea level
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  department   String?
+  hectares     Float?
+  altitude     Float?   // meters above sea level
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   producerId Int
   producer   Producer @relation(fields: [producerId], references: [id], onDelete: Cascade)
@@ -76,15 +64,15 @@ model Farm {
 }
 
 model Batch {
-  id            Int      @id @default(autoincrement())
-  code          String   @unique
-  harvestDate   DateTime
-  processingMethod String? // washed, natural, honey, etc.
-  variety       String?  // caturra, castillo, geisha, etc.
-  weight        Float?   // kilograms
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id               Int      @id @default(autoincrement())
+  code             String   @unique
+  harvestDate      DateTime
+  processingMethod String?  // washed, natural, honey, anaerobic
+  variety          String?  // caturra, castillo, geisha, colombia
+  weight           Float?   // kilograms
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   farmId Int
   farm   Farm @relation(fields: [farmId], references: [id], onDelete: Cascade)
@@ -98,26 +86,27 @@ model Batch {
 }
 
 model ProductionVariables {
-  id                Int      @id @default(autoincrement())
-  // Climate variables
-  avgTemperature    Float?   // °C
-  avgRainfall       Float?   // mm
-  avgHumidity       Float?   // percentage
+  id Int @id @default(autoincrement())
 
-  // Soil variables
+  // Climate
+  avgTemperature Float? // °C
+  avgRainfall    Float? // mm
+  avgHumidity    Float? // %
+
+  // Soil
   soilPH            Float?
-  soilOrganicMatter Float?   // percentage
+  soilOrganicMatter Float? // %
   soilNitrogen      Float?
 
   // Crop management
-  fertilizationFrequency String? // monthly, quarterly, etc.
-  pestControlType   String?  // organic, chemical, integrated
-  irrigationType    String?  // drip, sprinkler, rainfed
+  fertilizationFrequency String?
+  pestControlType        String? // organic | chemical | integrated
+  irrigationType         String? // drip | sprinkler | rainfed
 
   // Post-harvest
-  dryingMethod      String?  // sun, mechanical, raised bed
-  dryingDays        Int?
-  storageMoisture   Float?   // percentage
+  dryingMethod    String? // sun | mechanical | raised_bed
+  dryingDays      Int?
+  storageMoisture Float?  // %
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -129,8 +118,9 @@ model ProductionVariables {
 }
 
 model CoffeeEvaluation {
-  id            Int      @id @default(autoincrement())
-  // SCA cupping scores (0-10 each)
+  id Int @id @default(autoincrement())
+
+  // SCA cupping scores (0–10 each, total max 100)
   fragranceScore  Float?
   flavorScore     Float?
   aftertasteScore Float?
@@ -141,12 +131,12 @@ model CoffeeEvaluation {
   cleanCupScore   Float?
   sweetnessScore  Float?
   overallScore    Float?
-  totalScore      Float?  // sum of all scores (max 100)
+  totalScore      Float?
 
-  defects       Int?     // number of defects found
-  evaluatorName String?
+  defects        Int?
+  evaluatorName  String?
   evaluationDate DateTime?
-  notes         String?
+  notes          String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -158,18 +148,25 @@ model CoffeeEvaluation {
 }
 
 model AIPrediction {
-  id              Int              @id @default(autoincrement())
-  status          PredictionStatus @default(PENDING)
-  predictedScore  Float?           // estimated quality score
-  qualityCategory QualityCategory?
-  confidenceLevel Float?           // 0.0 to 1.0
+  id Int @id @default(autoincrement())
+
+  // status: "PENDING" | "PROCESSING" | "DONE" | "ERROR"
+  status String @default("PENDING")
+
+  predictedScore  Float?
+  // qualityCategory: "SPECIALTY" | "PREMIUM" | "COMMERCIAL" | "LOW_GRADE"
+  qualityCategory String?
+  confidenceLevel Float?  // 0.0–1.0
   modelVersion    String?
-  inputFeatures   Json?            // snapshot of variables used
-  rawOutput       Json?            // full model output
-  errorMessage    String?
-  requestedAt     DateTime         @default(now())
-  completedAt     DateTime?
-  updatedAt       DateTime         @updatedAt
+
+  // Stored as JSON string (compatible with SQLite and PostgreSQL)
+  inputFeatures String? // JSON
+  rawOutput     String? // JSON
+
+  errorMessage String?
+  requestedAt  DateTime  @default(now())
+  completedAt  DateTime?
+  updatedAt    DateTime  @updatedAt
 
   batchId Int   @unique
   batch   Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
@@ -178,11 +175,13 @@ model AIPrediction {
 }
 
 model Recommendation {
-  id          Int      @id @default(autoincrement())
+  id          Int    @id @default(autoincrement())
   title       String
   description String
-  category    String   // commercialization, processing, agronomic
-  priority    String   @default("medium") // low, medium, high
+  // category: "commercialization" | "processing" | "agronomic"
+  category    String
+  // priority: "low" | "medium" | "high"
+  priority    String   @default("medium")
   createdAt   DateTime @default(now())
 
   batchId Int
