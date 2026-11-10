@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  // LOCAL dev: sqlite (hardcoded for Prisma compatibility)
-  // Before deploying to Render: change provider to "postgresql" and url to env("DATABASE_URL")
+  // Local default: SQLite. `npx prisma db push` creates prisma/dev.db automatically.
+  // For PostgreSQL: change provider to "postgresql" and url to env("DATABASE_URL").
   provider = "sqlite"
   url      = "file:./dev.db"
 }
