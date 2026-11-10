@@ -6,6 +6,7 @@ const { buildMarketFits, generateRecommendations } = require('../services/recomm
 const {
   buildAiPayload,
   buildFallbackPrediction,
+  pickVariables,
   serializePrediction,
   serializePredictionRun,
 } = require('../services/prediction.service');
@@ -108,7 +109,7 @@ const requestPrediction = async (req, res, next) => {
 
     const normalized = normalizeResult(result);
     const inputFeatures = {
-      ...variables,
+      ...pickVariables(variables),
       variety: batch.variety,
       processingMethod: batch.processingMethod,
       altitude: batch.farm?.altitude,

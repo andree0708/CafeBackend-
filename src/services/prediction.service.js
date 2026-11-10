@@ -33,12 +33,44 @@ const serializePredictionRun = (run) => {
   };
 };
 
+const VARIABLE_KEYS = [
+  'avgTemperature',
+  'avgRainfall',
+  'avgHumidity',
+  'soilPH',
+  'soilOrganicMatter',
+  'soilNitrogen',
+  'fertilizationFrequency',
+  'pestControlType',
+  'irrigationType',
+  'dryingMethod',
+  'dryingDays',
+  'storageMoisture',
+  'fermentationHours',
+  'soilType',
+];
+
+/**
+ * Keeps only agronomic fields, so database bookkeeping (ids, timestamps) never
+ * leaks into the stored prediction snapshot.
+ */
+const pickVariables = (variables) => {
+  const result = {};
+  for (const key of VARIABLE_KEYS) {
+    const value = variables?.[key];
+    if (value !== null && value !== undefined && value !== '') {
+      result[key] = value;
+    }
+  }
+  return result;
+};
+
 const buildAiPayload = ({ batch, variables }) => ({
   batchId: batch.id,
   variety: batch.variety,
   processingMethod: batch.processingMethod,
   altitude: batch.farm?.altitude,
-  variables: variables || {},
+  variables: pickVariables(variables),
 });
 
 /**
@@ -103,6 +135,7 @@ module.exports = {
   parseJson,
   serializePrediction,
   serializePredictionRun,
+  pickVariables,
   buildAiPayload,
   buildFallbackPrediction,
 };
