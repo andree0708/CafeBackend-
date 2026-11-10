@@ -28,11 +28,11 @@ model User {
 }
 
 model Producer {
-  id        Int     @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   firstName String
   lastName  String
   phone     String?
-  document  String? @unique
+  document  String?  @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -51,7 +51,7 @@ model Farm {
   municipality String?
   department   String?
   hectares     Float?
-  altitude     Float?   // meters above sea level
+  altitude     Float? // meters above sea level
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -67,9 +67,9 @@ model Batch {
   id               Int      @id @default(autoincrement())
   code             String   @unique
   harvestDate      DateTime
-  processingMethod String?  // washed, natural, honey, anaerobic
-  variety          String?  // caturra, castillo, geisha, colombia
-  weight           Float?   // kilograms
+  processingMethod String? // washed, natural, honey, anaerobic
+  variety          String? // caturra, castillo, geisha, colombia
+  weight           Float? // kilograms
   notes            String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -81,6 +81,8 @@ model Batch {
   coffeeEvaluation    CoffeeEvaluation?
   aiPrediction        AIPrediction?
   recommendations     Recommendation[]
+  marketFits          MarketFit[]
+  predictionRuns      PredictionRun[]
 
   @@map("batches")
 }
@@ -104,9 +106,13 @@ model ProductionVariables {
   irrigationType         String? // drip | sprinkler | rainfed
 
   // Post-harvest
-  dryingMethod    String? // sun | mechanical | raised_bed
-  dryingDays      Int?
-  storageMoisture Float?  // %
+  dryingMethod      String? // sun | mechanical | raised_bed | greenhouse | other
+  dryingDays        Int?
+  storageMoisture   Float? // %
+  fermentationHours Float? // hours of fermentation before drying
+
+  // Soil profile
+  soilType String? // volcanic | clay | sandy | loam | other
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -156,12 +162,16 @@ model AIPrediction {
   predictedScore  Float?
   // qualityCategory: "SPECIALTY" | "PREMIUM" | "COMMERCIAL" | "LOW_GRADE"
   qualityCategory String?
-  confidenceLevel Float?  // 0.0–1.0
+  confidenceLevel Float? // 0.0–1.0
   modelVersion    String?
 
   // Stored as JSON string (compatible with SQLite and PostgreSQL)
-  inputFeatures String? // JSON
-  rawOutput     String? // JSON
+  inputFeatures     String? // JSON
+  rawOutput         String? // JSON
+  topFactors        String? // JSON: SHAP contributions
+  explanationMethod String? // "SHAP TreeExplainer" | null
+  usedFallback      Boolean @default(false)
+  fallbackReason    String?
 
   errorMessage String?
   requestedAt  DateTime  @default(now())
@@ -175,17 +185,61 @@ model AIPrediction {
 }
 
 model Recommendation {
-  id          Int    @id @default(autoincrement())
-  title       String
-  description String
+  id               Int      @id @default(autoincrement())
+  title            String
+  description      String
   // category: "commercialization" | "processing" | "agronomic"
-  category    String
+  category         String
   // priority: "low" | "medium" | "high"
-  priority    String   @default("medium")
-  createdAt   DateTime @default(now())
+  priority         String   @default("medium")
+  // commercial market: "local" | "cafes" | "export" | "specialty"
+  market           String?
+  fitScore         Float?
+  // opportunityLevel: "low" | "medium" | "high"
+  opportunityLevel String?
+  rationale        String?
+  createdAt        DateTime @default(now())
 
   batchId Int
   batch   Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
 
   @@map("recommendations")
+}
+
+// Market fit is stored separately so the UI can render opportunity bars
+// for every destination, not only the recommended one.
+model MarketFit {
+  id        Int      @id @default(autoincrement())
+  market    String // "local" | "cafes" | "export" | "specialty"
+  fitScore  Float // 0-100
+  rationale String?
+  createdAt DateTime @default(now())
+
+  batchId Int
+  batch   Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, market])
+  @@map("market_fits")
+}
+
+// Every prediction run is kept as an immutable snapshot, while
+// AIPrediction stores the latest result for fast reads.
+model PredictionRun {
+  id                Int      @id @default(autoincrement())
+  predictedScore    Float?
+  qualityCategory   String?
+  confidenceLevel   Float?
+  modelVersion      String?
+  explanationMethod String?
+  usedFallback      Boolean  @default(false)
+  topFactors        String? // JSON
+  inputFeatures     String? // JSON
+  rawOutput         String? // JSON
+  createdAt         DateTime @default(now())
+
+  batchId Int
+  batch   Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId, createdAt])
+  @@map("prediction_runs")
 }
