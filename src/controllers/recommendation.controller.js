@@ -26,7 +26,7 @@ const getRecommendations = async (req, res, next) => {
 
     const recommendations = await prisma.recommendation.findMany({
       where: { batchId: Number(req.params.batchId) },
-      orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }],
+      orderBy: { createdAt: 'desc' },
     })
 
     res.status(200).json({ success: true, data: { recommendations } })
@@ -43,7 +43,10 @@ const addRecommendation = async (req, res, next) => {
   try {
     await verifyBatchOwnership(req.params.batchId, req.user.id, req.user.role)
 
-    const { title, description, category, priority } = req.body
+    const {
+      title, description, category, priority,
+      market, fitScore, opportunityLevel, rationale,
+    } = req.body
 
     const recommendation = await prisma.recommendation.create({
       data: {
@@ -51,6 +54,10 @@ const addRecommendation = async (req, res, next) => {
         description,
         category,
         priority: priority || 'medium',
+        market: market || null,
+        fitScore: fitScore != null ? Number(fitScore) : null,
+        opportunityLevel: opportunityLevel || null,
+        rationale: rationale || null,
         batchId: Number(req.params.batchId),
       },
     })

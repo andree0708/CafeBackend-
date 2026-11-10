@@ -50,7 +50,14 @@ const getAllBatches = async (req, res, next) => {
       include: {
         farm: { select: { id: true, name: true, municipality: true } },
         aiPrediction: {
-          select: { status: true, qualityCategory: true, predictedScore: true, confidenceLevel: true },
+          select: {
+            status: true,
+            qualityCategory: true,
+            predictedScore: true,
+            confidenceLevel: true,
+            modelVersion: true,
+            usedFallback: true,
+          },
         },
         _count: { select: { recommendations: true } },
       },
@@ -84,7 +91,9 @@ const getBatchById = async (req, res, next) => {
         productionVariables: true,
         coffeeEvaluation: true,
         aiPrediction: true,
-        recommendations: { orderBy: { priority: 'asc' } },
+        recommendations: { orderBy: { createdAt: 'desc' } },
+        marketFits: { orderBy: { fitScore: 'desc' } },
+        predictionRuns: { orderBy: { createdAt: 'desc' }, take: 10 },
       },
     });
 

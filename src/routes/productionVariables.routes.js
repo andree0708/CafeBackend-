@@ -84,6 +84,16 @@ router.post(
     body('storageMoisture')
       .optional({ checkFalsy: true })
       .isFloat({ min: 0, max: 100 }).withMessage('Storage moisture must be between 0% and 100%.'),
+
+    body('fermentationHours')
+      .optional({ checkFalsy: true })
+      .isFloat({ min: 0, max: 240 }).withMessage('Fermentation hours must be between 0 and 240.'),
+
+    body('soilType')
+      .optional({ checkFalsy: true })
+      .trim()
+      .isIn(['volcanic', 'clay', 'sandy', 'loam', 'other'])
+      .withMessage('Soil type must be: volcanic, clay, sandy, loam or other.'),
   ],
   validate,
   upsertProductionVariables

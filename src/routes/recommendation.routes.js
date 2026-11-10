@@ -48,6 +48,29 @@ router.post(
       .trim()
       .isIn(['low', 'medium', 'high'])
       .withMessage('Priority must be: low, medium or high.'),
+
+    body('market')
+      .optional({ checkFalsy: true })
+      .trim()
+      .isIn(['local', 'cafes', 'export', 'specialty'])
+      .withMessage('Market must be: local, cafes, export or specialty.'),
+
+    body('fitScore')
+      .optional({ checkFalsy: true })
+      .isFloat({ min: 0, max: 100 })
+      .withMessage('Fit score must be between 0 and 100.'),
+
+    body('opportunityLevel')
+      .optional({ checkFalsy: true })
+      .trim()
+      .isIn(['low', 'medium', 'high'])
+      .withMessage('Opportunity level must be: low, medium or high.'),
+
+    body('rationale')
+      .optional({ checkFalsy: true })
+      .trim()
+      .isLength({ max: 1000 })
+      .withMessage('Rationale must not exceed 1,000 characters.'),
   ],
   validate,
   addRecommendation

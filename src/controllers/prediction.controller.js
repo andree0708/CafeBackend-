@@ -1,165 +1,71 @@
 const prisma = require('../lib/prisma');
 const { createError } = require('../middlewares/error.middleware');
+const { predict } = require('../services/ai.service');
+const { classify } = require('../services/quality.service');
+const { buildMarketFits, generateRecommendations } = require('../services/recommendation.service');
+const {
+  buildAiPayload,
+  buildFallbackPrediction,
+  serializePrediction,
+  serializePredictionRun,
+} = require('../services/prediction.service');
 
-const classify = (score) => {
-  if (score >= 85) return 'SPECIALTY';
-  if (score >= 75) return 'PREMIUM';
-  if (score >= 60) return 'COMMERCIAL';
-  return 'LOW_GRADE';
+const predictionInclude = {
+  farm: { include: { producer: { select: { userId: true } } } },
+  productionVariables: true,
+  coffeeEvaluation: true,
+  aiPrediction: true,
+  marketFits: { orderBy: { fitScore: 'desc' } },
+  predictionRuns: { orderBy: { createdAt: 'desc' }, take: 10 },
 };
 
-const runMockModel = (variables, extras = {}) => {
-  let score = 70;
+const findBatch = (batchId) =>
+  prisma.batch.findUnique({ where: { id: batchId }, include: predictionInclude });
 
-  if (variables) {
-    if (variables.avgTemperature >= 17 && variables.avgTemperature <= 23) score += 3;
-    if (variables.avgRainfall >= 1500 && variables.avgRainfall <= 2500) score += 2;
-    if (variables.avgHumidity >= 70 && variables.avgHumidity <= 85) score += 2;
-    if (variables.soilPH >= 5.5 && variables.soilPH <= 6.5) score += 4;
-    if (variables.soilOrganicMatter && variables.soilOrganicMatter > 3) score += 3;
-    if (variables.dryingMethod === 'raised_bed') score += 4;
-    if (variables.dryingMethod === 'sun') score += 2;
-    if (variables.storageMoisture && variables.storageMoisture <= 11) score += 3;
-    if (variables.pestControlType === 'organic') score += 2;
+const assertCanAccess = (batch, user) => {
+  if (user.role !== 'ADMIN' && batch.farm.producer.userId !== user.id) {
+    throw createError('You do not have permission to access this prediction.', 403);
   }
-  if (extras.altitude >= 1600 && extras.altitude <= 2100) score += 3;
-  if (extras.variety === 'geisha') score += 4;
-  if (extras.processingMethod === 'washed' || extras.processingMethod === 'honey') score += 1;
+};
 
-  score += Math.random() * 6 - 3;
-  score = Math.min(100, Math.max(0, Math.round(score * 10) / 10));
-
+const normalizeResult = (result) => {
+  const predictedScore = Math.round(Number(result.predictedScore) * 10) / 10;
   return {
-    predictedScore: score,
-    qualityCategory: classify(score),
-    confidenceLevel: Math.round((variables ? 0.72 + Math.random() * 0.18 : 0.42) * 100) / 100,
-    modelVersion: 'fallback-rules-v1',
+    predictedScore,
+    qualityCategory: result.qualityCategory || classify(predictedScore),
+    confidenceLevel: Number(result.confidenceLevel ?? 0.7),
+    confidenceMethod: result.confidenceMethod || 'tree_dispersion',
+    modelVersion: result.modelVersion || 'unknown',
+    explanationMethod: result.explanationMethod || null,
+    topFactors: Array.isArray(result.topFactors) ? result.topFactors : [],
+    usedFallback: Boolean(result.usedFallback),
+    fallbackReason: result.fallbackReason || null,
   };
-};
-
-const callAiService = async (payload) => {
-  const base = process.env.AI_SERVICE_URL;
-  if (!base) return null;
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(`${base.replace(/\/$/, '')}/predict`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`AI service ${res.status}`);
-    const data = await res.json();
-    if (typeof data.predictedScore !== 'number') throw new Error('Invalid AI payload');
-    return {
-      predictedScore: data.predictedScore,
-      qualityCategory: data.qualityCategory || classify(data.predictedScore),
-      confidenceLevel: data.confidenceLevel ?? 0.7,
-      modelVersion: data.modelVersion || 'cafe-rf-v1',
-      rawOutput: data,
-    };
-  } finally {
-    clearTimeout(timer);
-  }
-};
-
-const generateRecommendations = (prediction, variables) => {
-  const recs = [];
-
-  if (prediction.qualityCategory === 'SPECIALTY') {
-    recs.push({
-      title: 'Canal de especialidad',
-      description:
-        'El lote califica como especialidad (score ≥ 85). Prioriza comercio directo, tostadores de origen y, si hay volumen y consistencia, concursos o subastas.',
-      category: 'commercialization',
-      priority: 'high',
-    });
-  } else if (prediction.qualityCategory === 'PREMIUM') {
-    recs.push({
-      title: 'Mercado premium y certificaciones',
-      description:
-        'El rango 75–84 admite exportación diferenciada. Evalúa sellos (Fair Trade, Rainforest, orgánico) y ajusta poscosecha para acercarte a especialidad.',
-      category: 'commercialization',
-      priority: 'high',
-    });
-  } else {
-    recs.push({
-      title: 'Revisar beneficio y almacenamiento',
-      description:
-        'Puntajes más bajos suelen originarse en secado, humedad de almacenamiento o fermentación. Documenta el proceso lote a lote antes de la próxima cosecha.',
-      category: 'processing',
-      priority: 'high',
-    });
-  }
-
-  if (variables?.soilPH && (variables.soilPH < 5.5 || variables.soilPH > 6.5)) {
-    recs.push({
-      title: 'Corregir pH del suelo',
-      description: `El rango óptimo para café es 5.5–6.5. El valor registrado es ${variables.soilPH}. Cal o azufre según el análisis de suelos.`,
-      category: 'agronomic',
-      priority: 'medium',
-    });
-  }
-
-  if (variables?.storageMoisture && variables.storageMoisture > 12) {
-    recs.push({
-      title: 'Bajar humedad de almacenamiento',
-      description: `Humedad de ${variables.storageMoisture}% supera el umbral seguro de 12%. Riesgo de hongos y pérdida de taza.`,
-      category: 'processing',
-      priority: 'high',
-    });
-  }
-
-  if (variables?.avgTemperature && (variables.avgTemperature < 17 || variables.avgTemperature > 23)) {
-    recs.push({
-      title: 'Manejo de sombra y altitud',
-      description:
-        'La temperatura óptima de cultivo está entre 17 y 23 °C. Revisa sombrío y aptitud de la variedad en esa finca.',
-      category: 'agronomic',
-      priority: 'medium',
-    });
-  }
-
-  recs.push({
-    title: 'Trazabilidad completa',
-    description:
-      'Conserva variables, fechas y proceso por lote. Los compradores de especialidad pagan por evidencia verificable, no solo por el puntaje.',
-    category: 'commercialization',
-    priority: 'low',
-  });
-
-  return recs;
 };
 
 const getPrediction = async (req, res, next) => {
   try {
     const batchId = Number(req.params.batchId);
-
-    const batch = await prisma.batch.findUnique({
-      where: { id: batchId },
-      include: {
-        farm: { include: { producer: { select: { userId: true } } } },
-        aiPrediction: true,
-      },
-    });
-
+    const batch = await findBatch(batchId);
     if (!batch) return next(createError('Batch not found.', 404));
-
-    if (req.user.role !== 'ADMIN' && batch.farm.producer.userId !== req.user.id) {
-      return next(createError('You do not have permission to view this prediction.', 403));
-    }
+    assertCanAccess(batch, req.user);
 
     if (!batch.aiPrediction) {
       return res.status(200).json({
         success: true,
         message: 'No prediction has been requested for this batch yet.',
-        data: { prediction: null },
+        data: { prediction: null, marketFits: [], history: [] },
       });
     }
 
-    res.status(200).json({ success: true, data: { prediction: batch.aiPrediction } });
+    res.status(200).json({
+      success: true,
+      data: {
+        prediction: serializePrediction(batch.aiPrediction),
+        marketFits: batch.marketFits,
+        history: batch.predictionRuns.map(serializePredictionRun),
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -168,21 +74,9 @@ const getPrediction = async (req, res, next) => {
 const requestPrediction = async (req, res, next) => {
   try {
     const batchId = Number(req.params.batchId);
-
-    const batch = await prisma.batch.findUnique({
-      where: { id: batchId },
-      include: {
-        farm: { include: { producer: { select: { userId: true } } } },
-        productionVariables: true,
-        aiPrediction: true,
-      },
-    });
-
+    const batch = await findBatch(batchId);
     if (!batch) return next(createError('Batch not found.', 404));
-
-    if (req.user.role !== 'ADMIN' && batch.farm.producer.userId !== req.user.id) {
-      return next(createError('You do not have permission to request a prediction for this batch.', 403));
-    }
+    assertCanAccess(batch, req.user);
 
     await prisma.aIPrediction.upsert({
       where: { batchId },
@@ -190,59 +84,110 @@ const requestPrediction = async (req, res, next) => {
       create: { batchId, status: 'PROCESSING' },
     });
 
-    const payload = {
-      batchId,
-      variety: batch.variety,
-      processingMethod: batch.processingMethod,
-      altitude: batch.farm.altitude,
-      variables: batch.productionVariables,
-    };
+    const variables = batch.productionVariables || {};
+    const payload = buildAiPayload({ batch, variables });
 
     let result;
     try {
-      result = await callAiService(payload);
-    } catch (err) {
-      console.warn('[AI] service unavailable, using fallback:', err.message);
-      result = null;
-    }
-    if (!result) {
-      result = runMockModel(batch.productionVariables, {
-        altitude: batch.farm.altitude,
-        variety: batch.variety,
-        processingMethod: batch.processingMethod,
+      result = await predict(payload);
+    } catch (error) {
+      if (process.env.AI_FALLBACK_ENABLED === 'false') {
+        await prisma.aIPrediction.update({
+          where: { batchId },
+          data: { status: 'ERROR', errorMessage: error.message },
+        });
+        return next(createError(`AI service unavailable: ${error.message}`, 503));
+      }
+      console.warn('[AI] service unavailable, using deterministic fallback:', error.message);
+      result = buildFallbackPrediction({
+        batch,
+        variables,
+        reason: error.message,
       });
     }
+
+    const normalized = normalizeResult(result);
+    const inputFeatures = {
+      ...variables,
+      variety: batch.variety,
+      processingMethod: batch.processingMethod,
+      altitude: batch.farm?.altitude,
+    };
 
     const prediction = await prisma.aIPrediction.update({
       where: { batchId },
       data: {
         status: 'DONE',
-        predictedScore: result.predictedScore,
-        qualityCategory: result.qualityCategory,
-        confidenceLevel: result.confidenceLevel,
-        modelVersion: result.modelVersion,
-        inputFeatures: JSON.stringify({
-          ...(batch.productionVariables || {}),
-          variety: batch.variety,
-          processingMethod: batch.processingMethod,
-          altitude: batch.farm.altitude,
-        }),
-        rawOutput: result.rawOutput ? JSON.stringify(result.rawOutput) : null,
+        predictedScore: normalized.predictedScore,
+        qualityCategory: normalized.qualityCategory,
+        confidenceLevel: normalized.confidenceLevel,
+        modelVersion: normalized.modelVersion,
+        explanationMethod: normalized.explanationMethod,
+        topFactors: JSON.stringify(normalized.topFactors),
+        usedFallback: normalized.usedFallback,
+        fallbackReason: normalized.fallbackReason,
+        inputFeatures: JSON.stringify(inputFeatures),
+        rawOutput: JSON.stringify(result),
         completedAt: new Date(),
         errorMessage: null,
       },
     });
 
-    const recData = generateRecommendations(result, batch.productionVariables);
+    await prisma.predictionRun.create({
+      data: {
+        batchId,
+        predictedScore: normalized.predictedScore,
+        qualityCategory: normalized.qualityCategory,
+        confidenceLevel: normalized.confidenceLevel,
+        modelVersion: normalized.modelVersion,
+        explanationMethod: normalized.explanationMethod,
+        usedFallback: normalized.usedFallback,
+        topFactors: JSON.stringify(normalized.topFactors),
+        inputFeatures: JSON.stringify(inputFeatures),
+        rawOutput: JSON.stringify(result),
+      },
+    });
+
+    const marketFits = buildMarketFits({
+      prediction: normalized,
+      batch,
+      variables,
+      evaluation: batch.coffeeEvaluation,
+    });
+
+    await prisma.marketFit.deleteMany({ where: { batchId } });
+    await prisma.marketFit.createMany({
+      data: marketFits.map((fit) => ({
+        batchId,
+        market: fit.market,
+        fitScore: fit.fitScore,
+        rationale: fit.rationale,
+      })),
+    });
+
+    const recData = generateRecommendations({
+      prediction: normalized,
+      batch,
+      variables,
+      evaluation: batch.coffeeEvaluation,
+      marketFits,
+    });
+
     await prisma.recommendation.deleteMany({ where: { batchId } });
     await prisma.recommendation.createMany({
-      data: recData.map((r) => ({ ...r, batchId })),
+      data: recData.map((recommendation) => ({ ...recommendation, batchId })),
     });
 
     res.status(200).json({
       success: true,
-      message: 'Prediction completed successfully.',
-      data: { prediction, recommendations: recData },
+      message: normalized.usedFallback
+        ? 'Prediction completed with the fallback model.'
+        : 'Prediction completed successfully.',
+      data: {
+        prediction: serializePrediction(prediction),
+        recommendations: recData,
+        marketFits,
+      },
     });
   } catch (error) {
     try {
@@ -250,9 +195,48 @@ const requestPrediction = async (req, res, next) => {
         where: { batchId: Number(req.params.batchId), status: 'PROCESSING' },
         data: { status: 'ERROR', errorMessage: error.message },
       });
-    } catch (_) { /* best-effort */ }
+    } catch (_) {
+      /* best-effort */
+    }
     next(error);
   }
 };
 
-module.exports = { getPrediction, requestPrediction };
+const getPredictionHistory = async (req, res, next) => {
+  try {
+    const batchId = Number(req.params.batchId);
+    const batch = await findBatch(batchId);
+    if (!batch) return next(createError('Batch not found.', 404));
+    assertCanAccess(batch, req.user);
+
+    res.status(200).json({
+      success: true,
+      data: { history: batch.predictionRuns.map(serializePredictionRun) },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getMarketFits = async (req, res, next) => {
+  try {
+    const batchId = Number(req.params.batchId);
+    const batch = await findBatch(batchId);
+    if (!batch) return next(createError('Batch not found.', 404));
+    assertCanAccess(batch, req.user);
+
+    res.status(200).json({
+      success: true,
+      data: { marketFits: batch.marketFits },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = {
+  getPrediction,
+  requestPrediction,
+  getPredictionHistory,
+  getMarketFits,
+};

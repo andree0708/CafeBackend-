@@ -54,7 +54,8 @@ const upsertProductionVariables = async (req, res, next) => {
       avgTemperature, avgRainfall, avgHumidity,
       soilPH, soilOrganicMatter, soilNitrogen,
       fertilizationFrequency, pestControlType, irrigationType,
-      dryingMethod, dryingDays, storageMoisture,
+      dryingMethod, dryingDays, storageMoisture, fermentationHours,
+      soilType,
     } = req.body;
 
     const data = {
@@ -70,6 +71,8 @@ const upsertProductionVariables = async (req, res, next) => {
       dryingMethod: dryingMethod || undefined,
       dryingDays: dryingDays !== undefined ? Number(dryingDays) : undefined,
       storageMoisture: storageMoisture !== undefined ? Number(storageMoisture) : undefined,
+      fermentationHours: fermentationHours !== undefined ? Number(fermentationHours) : undefined,
+      soilType: soilType || undefined,
     };
 
     // Remove undefined keys so upsert doesn't overwrite existing values with null
