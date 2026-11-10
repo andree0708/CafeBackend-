@@ -212,6 +212,8 @@ model MarketFit {
   id        Int      @id @default(autoincrement())
   market    String // "local" | "cafes" | "export" | "specialty"
   fitScore  Float // 0-100
+  // opportunityLevel: "low" | "medium" | "high"
+  opportunityLevel String?
   rationale String?
   createdAt DateTime @default(now())
 

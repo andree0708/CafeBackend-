@@ -162,6 +162,7 @@ const requestPrediction = async (req, res, next) => {
         batchId,
         market: fit.market,
         fitScore: fit.fitScore,
+        opportunityLevel: fit.opportunityLevel,
         rationale: fit.rationale,
       })),
     });
