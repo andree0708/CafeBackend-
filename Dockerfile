@@ -1,5 +1,9 @@
 FROM node:20-alpine
 
+# Prisma auto-detects the OpenSSL version via the openssl CLI. Without it,
+# detection fails and the schema engine binary cannot start on Alpine/musl.
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 # Install dependencies first to leverage Docker layer caching.
