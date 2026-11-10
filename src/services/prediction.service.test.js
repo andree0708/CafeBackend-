@@ -97,8 +97,8 @@ test('fallback rewards good agronomic conditions', () => {
   });
 
   assert.ok(good.predictedScore > bad.predictedScore);
-  assert.ok(good.predictedScore <= 100);
-  assert.ok(bad.predictedScore >= 0);
+  assert.ok(good.predictedScore <= 92);
+  assert.ok(bad.predictedScore >= 40);
 });
 
 test('serializePrediction parses JSON columns safely', () => {

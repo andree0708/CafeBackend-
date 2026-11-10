@@ -80,42 +80,105 @@ const buildAiPayload = ({ batch, variables }) => ({
  */
 const buildFallbackPrediction = ({ batch, variables, reason }) => {
   const v = variables || {};
-  let score = 70;
+  const BASE_SCORE = 68;
+  const WEIGHT = 0.6;
+  let total = 0;
   const factors = [];
 
-  const add = (condition, points, feature, label, value) => {
-    if (!condition) return;
-    score += points;
+  const isPresent = (value) => value !== null && value !== undefined && value !== '';
+
+  // Adds an effective contribution only when the value was actually recorded.
+  // This keeps missing data neutral instead of silently rewarding the lot.
+  const add = (value, points, feature, label) => {
+    if (!isPresent(value)) return;
+    const effective = round1(points * WEIGHT);
+    total += effective;
     factors.push({
       feature,
       label,
       value,
-      contribution: points,
-      direction: points >= 0 ? 'positive' : 'negative',
+      contribution: effective,
+      direction: effective >= 0 ? 'positive' : 'negative',
     });
   };
 
-  add(v.avgTemperature >= 17 && v.avgTemperature <= 23, 3, 'avgTemperature', 'Average temperature', v.avgTemperature);
-  add(v.avgRainfall >= 1500 && v.avgRainfall <= 2500, 2, 'avgRainfall', 'Annual rainfall', v.avgRainfall);
-  add(v.avgHumidity >= 70 && v.avgHumidity <= 85, 2, 'avgHumidity', 'Relative humidity', v.avgHumidity);
-  add(v.soilPH >= 5.5 && v.soilPH <= 6.5, 4, 'soilPH', 'Soil pH', v.soilPH);
-  add(v.soilOrganicMatter > 3, 3, 'soilOrganicMatter', 'Soil organic matter', v.soilOrganicMatter);
-  add(v.dryingMethod === 'raised_bed', 4, 'dryingMethod', 'Drying method', v.dryingMethod);
-  add(v.dryingMethod === 'sun', 2, 'dryingMethod', 'Drying method', v.dryingMethod);
-  add(v.storageMoisture != null && v.storageMoisture <= 11, 3, 'storageMoisture', 'Storage moisture', v.storageMoisture);
-  add(v.pestControlType === 'organic', 2, 'pestControlType', 'Pest control', v.pestControlType);
-  add(v.fermentationHours >= 12 && v.fermentationHours <= 72, 2, 'fermentationHours', 'Fermentation hours', v.fermentationHours);
-  add(v.soilType === 'volcanic', 2, 'soilType', 'Soil type', v.soilType);
+  const temperature = v.avgTemperature;
+  if (isPresent(temperature)) {
+    add(temperature, temperature >= 17 && temperature <= 23 ? 3 : -3, 'avgTemperature', 'Average temperature');
+  }
+
+  const rainfall = v.avgRainfall;
+  if (isPresent(rainfall)) {
+    add(rainfall, rainfall >= 1500 && rainfall <= 2500 ? 2 : -2, 'avgRainfall', 'Annual rainfall');
+  }
+
+  const humidity = v.avgHumidity;
+  if (isPresent(humidity)) {
+    add(humidity, humidity >= 70 && humidity <= 85 ? 2 : -2, 'avgHumidity', 'Relative humidity');
+  }
+
+  const ph = v.soilPH;
+  if (isPresent(ph)) {
+    add(ph, ph >= 5.5 && ph <= 6.5 ? 4 : -4, 'soilPH', 'Soil pH');
+  }
+
+  const organicMatter = v.soilOrganicMatter;
+  if (isPresent(organicMatter)) {
+    add(organicMatter, organicMatter > 3 ? 3 : -2, 'soilOrganicMatter', 'Soil organic matter');
+  }
+
+  const dryingMethod = v.dryingMethod;
+  if (isPresent(dryingMethod)) {
+    const dryingPoints = { raised_bed: 4, sun: 2, greenhouse: 2, mechanical: -1, other: -2 };
+    add(dryingMethod, dryingPoints[dryingMethod] ?? -2, 'dryingMethod', 'Drying method');
+  }
+
+  const storageMoisture = v.storageMoisture;
+  if (isPresent(storageMoisture)) {
+    const moisturePoints = storageMoisture <= 11 ? 3 : storageMoisture <= 12 ? 1 : -4;
+    add(storageMoisture, moisturePoints, 'storageMoisture', 'Storage moisture');
+  }
+
+  const pestControlType = v.pestControlType;
+  if (isPresent(pestControlType)) {
+    const pestPoints = { organic: 2, integrated: 1, chemical: -2, none: -2 };
+    add(pestControlType, pestPoints[pestControlType] ?? 0, 'pestControlType', 'Pest control');
+  }
+
+  const fermentationHours = v.fermentationHours;
+  if (isPresent(fermentationHours)) {
+    const fermentationPoints = fermentationHours >= 12 && fermentationHours <= 72 ? 2 : -3;
+    add(fermentationHours, fermentationPoints, 'fermentationHours', 'Fermentation hours');
+  }
+
+  const soilType = v.soilType;
+  if (isPresent(soilType)) {
+    const soilPoints = { volcanic: 2, loam: 1, clay: -1, sandy: -2, other: 0 };
+    add(soilType, soilPoints[soilType] ?? 0, 'soilType', 'Soil type');
+  }
 
   const altitude = batch?.farm?.altitude;
-  add(altitude >= 1600 && altitude <= 2100, 3, 'altitude', 'Altitude', altitude);
-  add(batch?.variety === 'geisha', 4, 'variety', 'Variety', batch?.variety);
-  add(['washed', 'honey'].includes(batch?.processingMethod), 1, 'processingMethod', 'Processing method', batch?.processingMethod);
+  if (isPresent(altitude)) {
+    const altitudePoints = altitude >= 1600 && altitude <= 2100 ? 3 : altitude >= 1400 ? 1 : -3;
+    add(altitude, altitudePoints, 'altitude', 'Altitude');
+  }
 
-  const provided = Object.values(v).filter((value) => value !== null && value !== undefined && value !== '').length;
+  const variety = batch?.variety;
+  if (isPresent(variety)) {
+    const varietyPoints = variety === 'geisha' ? 4 : ['bourbon', 'typica', 'tabi'].includes(variety) ? 2 : 0;
+    add(variety, varietyPoints, 'variety', 'Variety');
+  }
+
+  const processingMethod = batch?.processingMethod;
+  if (isPresent(processingMethod)) {
+    const processPoints = ['washed', 'honey', 'natural', 'anaerobic'].includes(processingMethod) ? 1 : -1;
+    add(processingMethod, processPoints, 'processingMethod', 'Processing method');
+  }
+
+  const provided = Object.values(v).filter(isPresent).length;
   const confidence = Math.min(0.75, 0.5 + provided * 0.02);
 
-  score = round1(clamp(score));
+  const score = round1(clamp(BASE_SCORE + total, 40, 92));
   factors.sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution));
 
   return {
@@ -125,6 +188,7 @@ const buildFallbackPrediction = ({ batch, variables, reason }) => {
     confidenceMethod: 'rule_based',
     modelVersion: 'fallback-rules-v2',
     explanationMethod: 'rule_based',
+    baselineScore: BASE_SCORE,
     topFactors: factors.slice(0, 6),
     usedFallback: true,
     fallbackReason: reason || 'AI service unavailable.',
