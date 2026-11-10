@@ -4,3 +4,5 @@ dist/
 .DS_Store
 *.log
 prisma/migrations/*.sql.bak
+prisma/dev.db
+prisma/dev.db-journal
