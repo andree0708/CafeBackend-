@@ -11,6 +11,7 @@ const productionVariablesRoutes = require('./routes/productionVariables.routes')
 const predictionRoutes = require('./routes/prediction.routes');
 const recommendationRoutes = require('./routes/recommendation.routes');
 const coffeeEvaluationRoutes = require('./routes/coffeeEvaluation.routes');
+const aiRoutes = require('./routes/ai.routes');
 
 const { errorHandler } = require('./middlewares/error.middleware');
 
@@ -47,6 +48,7 @@ app.use('/api/batches', productionVariablesRoutes);
 app.use('/api/batches', predictionRoutes);
 app.use('/api/batches', recommendationRoutes);
 app.use('/api/batches', coffeeEvaluationRoutes);
+app.use('/api/ai', aiRoutes);
 
 // ─── 404 handler ──────────────────────────────────────────────────────────────
 app.use((req, res) => {
