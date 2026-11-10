@@ -135,13 +135,13 @@ const scoreMarket = (market, context) => {
   switch (market) {
     case 'specialty':
       return clamp(
-        context.scoreNorm * 0.45 +
+        context.scoreNorm * 0.5 +
           (context.processPremium ? 12 : 0) +
-          (context.veryHighAltitude ? 10 : context.highAltitude ? 6 : 0) +
-          (['geisha', 'bourbon', 'typica'].includes(context.variety) ? 8 : 0) +
+          (context.veryHighAltitude ? 12 : context.highAltitude ? 7 : 0) +
+          (['geisha', 'bourbon', 'typica'].includes(context.variety) ? 10 : 0) +
           (context.lowDefects ? 8 : 0) +
           (context.lowMoisture ? 7 : 0) +
-          (context.controlledFermentation ? 5 : 0) +
+          (context.controlledFermentation ? 6 : 0) +
           (context.sensoryNorm !== null ? context.sensoryNorm * 0.05 : 5)
       );
 
@@ -159,25 +159,25 @@ const scoreMarket = (market, context) => {
 
     case 'cafes':
       return clamp(
-        context.scoreNorm * 0.35 +
-          (context.score >= 75 ? 10 : 0) +
-          (context.processPremium ? 10 : 0) +
-          (context.sensoryNorm !== null ? context.sensoryNorm * 0.15 : 8) +
-          (context.weight !== null && context.weight >= 50 ? 8 : 4) +
-          (context.lowDefects ? 10 : 0) +
-          (context.lowMoisture ? 7 : 0) +
-          10
+        context.scoreNorm * 0.3 +
+          (context.score >= 75 ? 8 : 0) +
+          (context.processPremium ? 8 : 0) +
+          (context.sensoryNorm !== null ? context.sensoryNorm * 0.12 : 6) +
+          (context.weight !== null && context.weight >= 50 ? 6 : 3) +
+          (context.lowDefects ? 8 : 0) +
+          (context.lowMoisture ? 5 : 0) +
+          6
       );
 
     case 'local':
     default:
       return clamp(
-        50 +
-          context.scoreNorm * 0.2 +
-          (context.weight !== null && context.weight >= 50 ? 8 : 4) +
-          (context.lowMoisture ? 7 : 0) +
-          (context.goodPH ? 5 : 0) +
-          10
+        40 +
+          context.scoreNorm * 0.15 +
+          (context.weight !== null && context.weight >= 50 ? 6 : 3) +
+          (context.lowMoisture ? 5 : 0) +
+          (context.goodPH ? 4 : 0) +
+          5
       );
   }
 };
