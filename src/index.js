@@ -20,8 +20,16 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ─── Middlewares ───────────────────────────────────────────────────────────────
+// CORS: FRONTEND_URL más orígenes extra separados por coma (ej. la IP pública
+// directa cuando el frontend también se sirve por HTTP en la instancia).
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  ...(process.env.ALLOWED_ORIGINS || '').split(','),
+]
+  .map((o) => (o || '').trim().replace(/\/$/, ''))
+  .filter(Boolean);
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: allowedOrigins.length ? allowedOrigins : 'http://localhost:5173',
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
